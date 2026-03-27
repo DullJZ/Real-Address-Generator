@@ -3,41 +3,61 @@ addEventListener('fetch', event => {
 })
 
 async function handleRequest(request) {
-  const { searchParams } = new URL(request.url)
-  const country = searchParams.get('country') || getRandomCountry()
-  let address, name, gender, phone
+  try {
+    const { searchParams } = new URL(request.url)
+    const country = searchParams.get('country') || getRandomCountry()
+    let address, name, gender, phone
 
-  for (let i = 0; i < 20; i++) {
-    const location = getRandomLocationInCountry(country)
-    const apiUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=18&addressdetails=1`
+    for (let i = 0; i < 20; i++) {
+      const location = getRandomLocationInCountry(country)
+      const apiUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&zoom=18&addressdetails=1`
 
-    const response = await fetch(apiUrl, {
-      headers: { 'User-Agent': 'Cloudflare Worker' }
-    })
-    const data = await response.json()
+      try {
+        const response = await fetch(apiUrl, {
+          headers: { 'User-Agent': 'RealAddressGenerator/1.0 (https://github.com/6Kmfi6HP/Real-Address-Generator)' }
+        })
+        if (!response.ok) continue
+        const data = await response.json()
 
-    if (data && data.address && data.address.house_number && data.address.road && (data.address.city || data.address.town)) {
-      address = formatAddress(data.address, country)
-      break
+        if (data && data.address && data.address.house_number && data.address.road && (data.address.city || data.address.town)) {
+          address = formatAddress(data.address, country)
+          break
+        }
+      } catch (e) {
+        console.error('Nominatim API error:', e.message)
+        continue
+      }
     }
-  }
 
-  if (!address) {
-    return new Response('Failed to retrieve detailed address, please refresh the interface （检索详细地址失败，请刷新界面）', { status: 500 })
-  }
+    if (!address) {
+      return new Response('Failed to retrieve detailed address, please refresh the interface （检索详细地址失败，请刷新界面）', { status: 500 })
+    }
 
-  const userData = await fetch('https://randomuser.me/api/')
-  const userJson = await userData.json()
-  if (userJson && userJson.results && userJson.results.length > 0) {
-    const user = userJson.results[0]
-    name = `${user.name.first} ${user.name.last}`
-    gender = user.gender.charAt(0).toUpperCase() + user.gender.slice(1)
-    phone = getRandomPhoneNumber(country)
-  } else {
-    name = getRandomName()
-    gender = "Unknown"
-    phone = getRandomPhoneNumber(country)
-  }
+    try {
+      const userData = await fetch('https://randomuser.me/api/')
+      if (userData.ok) {
+        const userJson = await userData.json()
+        if (userJson && userJson.results && userJson.results.length > 0) {
+          const user = userJson.results[0]
+          name = `${user.name.first} ${user.name.last}`
+          gender = user.gender.charAt(0).toUpperCase() + user.gender.slice(1)
+          phone = getRandomPhoneNumber(country)
+        } else {
+          name = getRandomName()
+          gender = "Unknown"
+          phone = getRandomPhoneNumber(country)
+        }
+      } else {
+        name = getRandomName()
+        gender = "Unknown"
+        phone = getRandomPhoneNumber(country)
+      }
+    } catch (e) {
+      console.error('RandomUser API error:', e.message)
+      name = getRandomName()
+      gender = "Unknown"
+      phone = getRandomPhoneNumber(country)
+    }
 
 const html = `
 <!DOCTYPE html>
@@ -179,6 +199,10 @@ const html = `
   return new Response(html, {
     headers: { 'content-type': 'text/html;charset=UTF-8' },
   })
+  } catch (error) {
+    console.error('Worker error:', error.message)
+    return new Response(`Error: ${error.message}`, { status: 500 })
+  }
 }
 
 function getRandomLocationInCountry(country) {
@@ -366,4 +390,12 @@ function getCountryOptions(selectedCountry) {
     { name: "Indonesia 印度尼西亚", code: "ID" }
   ]
   return countries.map(({ name, code }) => `<option value="${code}" ${code === selectedCountry ? 'selected' : ''}>${name}</option>`).join('')
+}
+
+function getRandomName() {
+  const firstNames = ["John", "Jane", "Alex", "Emily", "Chris", "Katie", "Mike", "Laura", "David", "Sarah"]
+  const lastNames = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"]
+  const firstName = firstNames[Math.floor(Math.random() * firstNames.length)]
+  const lastName = lastNames[Math.floor(Math.random() * lastNames.length)]
+  return `${firstName} ${lastName}`
 }
